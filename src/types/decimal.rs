@@ -2,7 +2,9 @@ use std::{
     cmp::Ordering,
     fmt,
     hash::{Hash, Hasher},
+    str::FromStr,
 };
+use crate::errors::Error;
 
 static FACTORS10: &[i64] = &[
     1,
@@ -263,6 +265,73 @@ impl Decimal {
     }
 }
 
+impl FromStr for Decimal {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+
+        // Handle empty string
+        if s.is_empty() {
+            return Err(Error::Other("Empty string cannot be converted to Decimal".into()));
+        }
+
+        // Check for negative sign
+        let (is_negative, s) = if s.starts_with('-') {
+            (true, &s[1..])
+        } else {
+            (false, s)
+        };
+
+        // Split by decimal point
+        let parts: Vec<&str> = s.split('.').collect();
+
+        if parts.len() > 2 {
+            return Err(Error::Other("Multiple decimal points".into()));
+        }
+
+        let (integer_part, fractional_part) = if parts.len() == 2 {
+            (parts[0], parts[1])
+        } else {
+            (parts[0], "")
+        };
+
+        // Validate that all characters are digits
+        if !integer_part.chars().all(|c| c.is_ascii_digit()) {
+            return Err(Error::Other("Invalid integer part in Decimal string".into()));
+        }
+
+        if !fractional_part.chars().all(|c| c.is_ascii_digit()) {
+            return Err(Error::Other("Invalid fractional part in Decimal string".into()));
+        }
+
+        // Handle the case where integer part is empty (e.g., ".123")
+        let integer_part = if integer_part.is_empty() { "0" } else { integer_part };
+
+        // Derive scale from the length of fractional part
+        let scale = fractional_part.len() as u8;
+
+        // Combine integer and fractional parts
+        let combined = format!("{}{}", integer_part, fractional_part);
+
+        // Parse to i64
+        let underlying = match combined.parse::<i64>() {
+            Ok(val) => if is_negative { -val } else { val },
+            Err(_) => return Err(Error::Other("Decimal number too large or invalid".into())),
+        };
+
+        // Calculate precision (total number of significant digits)
+        let precision = combined.len() as u8;
+
+        Ok(Decimal {
+            underlying,
+            precision,
+            scale,
+            nobits: NoBits::N64,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -345,5 +414,91 @@ mod test {
         let d = Decimal::of(0.00001, 5);
         let actual = decimal2str(&d);
         assert_eq!(actual, "0.00001".to_string());
+    }
+
+    #[test]
+    fn test_str2decimal_basic() {
+        let decimal = Decimal::from_str("123.45").unwrap();
+        assert_eq!(decimal.underlying, 12345);
+        assert_eq!(decimal.precision, 5); // 5 digits total
+        assert_eq!(decimal.scale, 2);     // 2 decimal places
+
+        // Test round trip
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "123.45");
+    }
+
+    #[test]
+    fn test_str2decimal_no_fractional() {
+        let decimal = Decimal::from_str("123").unwrap();
+        assert_eq!(decimal.underlying, 123);
+        assert_eq!(decimal.precision, 3); // 3 digits total
+        assert_eq!(decimal.scale, 0);     // 0 decimal places
+
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "123.");
+    }
+
+    #[test]
+    fn test_str2decimal_leading_dot() {
+        let decimal = Decimal::from_str(".123").unwrap();
+        assert_eq!(decimal.underlying, 123);
+        assert_eq!(decimal.precision, 4); // "0123" = 4 digits
+        assert_eq!(decimal.scale, 3);     // 3 decimal places
+
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "0.123");
+    }
+
+    #[test]
+    fn test_str2decimal_negative() {
+        let decimal = Decimal::from_str("-123.45").unwrap();
+        assert_eq!(decimal.underlying, -12345);
+        assert_eq!(decimal.precision, 5); // 5 digits total (sign doesn't count)
+        assert_eq!(decimal.scale, 2);     // 2 decimal places
+
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "-123.45");
+    }
+
+    #[test]
+    fn test_str2decimal_zero() {
+        let decimal = Decimal::from_str("0").unwrap();
+        assert_eq!(decimal.underlying, 0);
+        assert_eq!(decimal.precision, 1);
+        assert_eq!(decimal.scale, 0);
+
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "0.");
+    }
+
+    #[test]
+    fn test_str2decimal_zero_fractional() {
+        let decimal = Decimal::from_str("0.00").unwrap();
+        assert_eq!(decimal.underlying, 0);
+        assert_eq!(decimal.precision, 3); // "000" = 3 digits
+        assert_eq!(decimal.scale, 2);     // 2 decimal places
+
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "0.00");
+    }
+
+    #[test]
+    fn test_str2decimal_leading_zeros() {
+        let decimal = Decimal::from_str("007.120").unwrap();
+        assert_eq!(decimal.underlying, 7120);
+        assert_eq!(decimal.precision, 6); // "007120" = 6 digits
+        assert_eq!(decimal.scale, 3);     // 3 decimal places
+
+        let str_result = decimal2str(&decimal);
+        assert_eq!(str_result, "7.120");
+    }
+
+    #[test]
+    fn test_str2decimal_errors() {
+        assert!(Decimal::from_str("").is_err());
+        assert!(Decimal::from_str("12.34.56").is_err());
+        assert!(Decimal::from_str("abc").is_err());
+        assert!(Decimal::from_str("12.3abc").is_err());
     }
 }

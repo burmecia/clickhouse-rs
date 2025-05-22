@@ -2,6 +2,7 @@
 
 use chrono::prelude::*;
 use chrono_tz::Tz;
+use ethnum::{i256, u256};
 use std::{
     collections::HashMap,
     hash::Hash,
@@ -80,7 +81,9 @@ simple_num_iterable! {
     f64: Float64,
 
     i128: Int128,
-    u128: UInt128
+    u128: UInt128,
+    i256: Int256,
+    u256: UInt256
 }
 
 macro_rules! iterator {

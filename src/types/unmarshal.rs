@@ -1,3 +1,5 @@
+use ethnum::{i256, u256};
+
 pub trait Unmarshal<T: Copy> {
     fn unmarshal(scratch: &[u8]) -> T;
 }
@@ -37,5 +39,23 @@ float_unmarshals! { f32: u32, f64: u64 }
 impl Unmarshal<bool> for bool {
     fn unmarshal(scratch: &[u8]) -> Self {
         scratch[0] != 0
+    }
+}
+
+impl Unmarshal<u256> for u256 {
+    fn unmarshal(scratch: &[u8]) -> Self {
+        Self::from_words(
+            u128::unmarshal(&scratch[16..]),
+            u128::unmarshal(&scratch[0..]),
+        )
+    }
+}
+
+impl Unmarshal<i256> for i256 {
+    fn unmarshal(scratch: &[u8]) -> Self {
+        Self::from_words(
+            i128::unmarshal(&scratch[16..]),
+            i128::unmarshal(&scratch[0..]),
+        )
     }
 }

@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap, fmt, mem, pin::Pin, str::FromStr, s
 
 use chrono::prelude::*;
 use chrono_tz::Tz;
-use ethnum::{i256, u256};
+pub use ethnum::{i256, u256};
 use hostname::get;
 
 use lazy_static::lazy_static;
